@@ -67,9 +67,9 @@ pub struct UserProfile {
 	initState: {
 		lang: 'rust',
 		code: `#[rpc_query(init = "setup")]
-async fn get_users(pool: &PgPool) -> Vec<User> {
+async fn get_users(state: &AppState) -> Vec<User> {
     sqlx::query_as("SELECT * FROM users")
-        .fetch_all(pool).await.unwrap()
+        .fetch_all(&state.pool).await.unwrap()
 }`
 	},
 

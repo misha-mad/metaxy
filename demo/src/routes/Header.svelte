@@ -25,7 +25,7 @@
 			<a
 				href={resolve('/docs')}
 				class="text-sm font-medium transition-colors {page.url.pathname.startsWith('/docs')
-					? 'text-accent-rust'
+					? 'text-accent-ts'
 					: 'text-text-muted hover:text-text-primary'}"
 			>
 				Docs

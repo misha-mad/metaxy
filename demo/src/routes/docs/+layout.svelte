@@ -93,27 +93,7 @@
 		return group.children.some((child) => isActive(child.href));
 	}
 
-	// Track manually toggled groups. Persisted to sessionStorage.
-	const STORAGE_KEY = 'docs-nav-open';
-
-	function loadOverrides(): Record<string, boolean> {
-		try {
-			const raw = sessionStorage.getItem(STORAGE_KEY);
-			return raw ? JSON.parse(raw) : {};
-		} catch {
-			return {};
-		}
-	}
-
-	let toggleOverrides: Record<string, boolean> = $state(loadOverrides());
-
-	function saveOverrides() {
-		try {
-			sessionStorage.setItem(STORAGE_KEY, JSON.stringify(toggleOverrides));
-		} catch {
-			// sessionStorage may be unavailable (e.g. private browsing)
-		}
-	}
+	let toggleOverrides: Record<string, boolean> = $state({});
 
 	function isGroupOpen(group: NavGroup): boolean {
 		if (group.label in toggleOverrides) return toggleOverrides[group.label];
@@ -121,23 +101,8 @@
 	}
 
 	function toggleGroup(group: NavGroup) {
-		const current = isGroupOpen(group);
-		toggleOverrides[group.label] = !current;
-		saveOverrides();
+		toggleOverrides[group.label] = !isGroupOpen(group);
 	}
-
-	// Auto-expand group containing the active page (without clearing manual overrides)
-	$effect(() => {
-		const path = page.url.pathname;
-		for (const entry of nav) {
-			if (isGroup(entry) && entry.children.some((c) => c.href === path)) {
-				if (!(entry.label in toggleOverrides)) {
-					toggleOverrides[entry.label] = true;
-					saveOverrides();
-				}
-			}
-		}
-	});
 
 	let sidebarOpen = $state(false);
 
