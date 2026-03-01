@@ -5,25 +5,22 @@ const codeBlocks: Record<string, { code: string; lang: 'rust' | 'typescript' }> 
 	secretRust: {
 		lang: 'rust',
 		code: `#[rpc_query]
-async fn secret(req: Request) -> impl IntoResponse {
-    let auth = req.headers()
-        .get("Authorization")
+async fn secret(headers: Headers) -> Result<String, String> {
+    let auth = headers.get("authorization")
         .and_then(|v| v.to_str().ok());
 
-    match auth {
-        Some("Bearer secret-token-123") =>
-            (StatusCode::OK, "Access granted!"),
-        _ =>
-            (StatusCode::UNAUTHORIZED, "Unauthorized"),
+    if auth != Some("Bearer secret-token-123") {
+        return Err("Unauthorized".into());
     }
+    Ok("Access granted!".to_string())
 }`
 	},
 	secretTs: {
 		lang: 'typescript',
-		code: `import { RpcError } from './rpc.svelte';
+		code: `import { RpcError } from './rpc-client';
 
 try {
-  const result = await client.query('secret');
+  const result = await rpc.query('secret');
 } catch (e) {
   if (e instanceof RpcError) {
     e.status   // HTTP status code

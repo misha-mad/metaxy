@@ -86,7 +86,9 @@ async fn init_demo(state: &AppState) -> InitDemoResponse {
         cold_start_at: state.cold_start_at,
         init_duration_ms: state.init_duration_ms,
         request_count: count,
-        now: now_ms(),
+        now: SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap().as_millis() as u64,
     }
 }`
 	}

@@ -13,7 +13,7 @@ fields = "camelCase"`
 	},
 	configCli: {
 		lang: 'shellscript',
-		code: `metaxy generate --field-naming camelCase`
+		code: `metaxy generate --fields camelCase`
 	},
 	exampleRust: {
 		lang: 'rust',

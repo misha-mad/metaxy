@@ -83,7 +83,7 @@ const result = await order.mutateAsync(orderInput);
 	},
 	echoRust: {
 		lang: 'rust',
-		code: `#[derive(Deserialize)]
+		code: `#[derive(Deserialize, Serialize)]
 pub struct EchoInput {
     pub message: String,
     pub uppercase: bool,
