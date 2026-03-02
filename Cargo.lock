@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "metaxy-cli"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -823,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "metaxy-macro"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "proc-macro2",
  "quote",
