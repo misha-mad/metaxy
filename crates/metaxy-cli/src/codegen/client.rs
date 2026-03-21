@@ -196,6 +196,68 @@ async function rpcFetch(
   }
 }"#;
 
+/// Internal SSE stream helper for the `stream()` method.
+const STREAM_HELPER: &str = r#"async function* rpcStream<T>(
+  config: RpcClientConfig,
+  procedure: string,
+  input?: unknown,
+  callOptions?: CallOptions,
+): AsyncGenerator<T> {
+  let url = `${config.baseUrl}/${procedure}`;
+  const customHeaders = typeof config.headers === "function"
+    ? await config.headers()
+    : config.headers;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...customHeaders,
+    ...callOptions?.headers,
+  };
+
+  const fetchFn = config.fetch ?? globalThis.fetch;
+  const init: RequestInit = { method: "POST", headers };
+  if (input !== undefined) {
+    init.body = config.serialize ? config.serialize(input) : JSON.stringify(input);
+  }
+
+  const signals: AbortSignal[] = [];
+  if (config.signal) signals.push(config.signal);
+  if (callOptions?.signal) signals.push(callOptions.signal);
+  if (signals.length > 0) {
+    init.signal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+  }
+
+  const res = await fetchFn(url, init);
+  if (!res.ok) {
+    let data: unknown;
+    try { data = await res.json(); } catch { data = null; }
+    throw new RpcError(res.status, `RPC stream error on "${procedure}": ${res.status} ${res.statusText}`, data);
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop()!;
+      for (const part of parts) {
+        for (const line of part.split("\n")) {
+          if (line.startsWith("data: ")) {
+            const payload = line.slice(6);
+            yield (config.deserialize ? config.deserialize(payload) : JSON.parse(payload)) as T;
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}"#;
+
 /// Generates the complete `rpc-client.ts` file content from a manifest.
 ///
 /// The output includes:
@@ -275,6 +337,15 @@ pub fn generate_client_file(
         emit!(out, "{WRAP_WITH_SIGNAL_FN}\n");
     }
 
+    // Stream helper (only when the manifest has streams)
+    let has_streams = manifest
+        .procedures
+        .iter()
+        .any(|p| p.kind == ProcedureKind::Stream);
+    if has_streams {
+        emit!(out, "{STREAM_HELPER}\n");
+    }
+
     // Type helpers for ergonomic API
     generate_type_helpers(&mut out);
     out.push('\n');
@@ -334,6 +405,7 @@ fn generate_idempotent_mutations(manifest: &Manifest, out: &mut String) {
 fn generate_type_helpers(out: &mut String) {
     emit!(out, "type QueryKey = keyof Procedures[\"queries\"];");
     emit!(out, "type MutationKey = keyof Procedures[\"mutations\"];");
+    emit!(out, "type StreamKey = keyof Procedures[\"streams\"];");
     emit!(
         out,
         "type QueryInput<K extends QueryKey> = Procedures[\"queries\"][K][\"input\"];"
@@ -350,6 +422,14 @@ fn generate_type_helpers(out: &mut String) {
         out,
         "type MutationOutput<K extends MutationKey> = Procedures[\"mutations\"][K][\"output\"];"
     );
+    emit!(
+        out,
+        "type StreamInput<K extends StreamKey> = Procedures[\"streams\"][K][\"input\"];"
+    );
+    emit!(
+        out,
+        "type StreamOutput<K extends StreamKey> = Procedures[\"streams\"][K][\"output\"];"
+    );
 }
 
 /// Generates the `createRpcClient` factory using an interface for typed overloads.
@@ -364,8 +444,14 @@ fn generate_client_factory(manifest: &Manifest, preserve_docs: bool, out: &mut S
         .iter()
         .filter(|p| p.kind == ProcedureKind::Mutation)
         .collect();
+    let streams: Vec<_> = manifest
+        .procedures
+        .iter()
+        .filter(|p| p.kind == ProcedureKind::Stream)
+        .collect();
     let has_queries = !queries.is_empty();
     let has_mutations = !mutations.is_empty();
+    let has_streams = !streams.is_empty();
 
     // Partition queries and mutations by void/non-void input
     let void_queries: Vec<_> = queries.iter().filter(|p| is_void_input(p)).collect();
@@ -373,8 +459,12 @@ fn generate_client_factory(manifest: &Manifest, preserve_docs: bool, out: &mut S
     let void_mutations: Vec<_> = mutations.iter().filter(|p| is_void_input(p)).collect();
     let non_void_mutations: Vec<_> = mutations.iter().filter(|p| !is_void_input(p)).collect();
 
+    let void_streams: Vec<_> = streams.iter().filter(|p| is_void_input(p)).collect();
+    let non_void_streams: Vec<_> = streams.iter().filter(|p| !is_void_input(p)).collect();
+
     let query_mixed = !void_queries.is_empty() && !non_void_queries.is_empty();
     let mutation_mixed = !void_mutations.is_empty() && !non_void_mutations.is_empty();
+    let stream_mixed = !void_streams.is_empty() && !non_void_streams.is_empty();
 
     // Emit VOID_QUERIES/VOID_MUTATIONS sets when mixed void/non-void exists
     if query_mixed {
@@ -401,6 +491,18 @@ fn generate_client_factory(manifest: &Manifest, preserve_docs: bool, out: &mut S
         );
         out.push('\n');
     }
+    if stream_mixed {
+        let names: Vec<_> = void_streams
+            .iter()
+            .map(|p| format!("\"{}\"", p.name))
+            .collect();
+        emit!(
+            out,
+            "const VOID_STREAMS: Set<string> = new Set([{}]);",
+            names.join(", ")
+        );
+        out.push('\n');
+    }
 
     // Emit the RpcClient interface with overloaded method signatures
     emit!(out, "export interface RpcClient {{");
@@ -414,6 +516,13 @@ fn generate_client_factory(manifest: &Manifest, preserve_docs: bool, out: &mut S
             out.push('\n');
         }
         generate_mutation_overloads(manifest, preserve_docs, out);
+    }
+
+    if has_streams {
+        if has_queries || has_mutations {
+            out.push('\n');
+        }
+        generate_stream_overloads(manifest, preserve_docs, out);
     }
 
     emit!(out, "}}");
@@ -529,6 +638,36 @@ fn generate_client_factory(manifest: &Manifest, preserve_docs: bool, out: &mut S
             emit!(
                 out,
                 "      return rpcFetch(config, \"POST\", key, args[0], args[1] as CallOptions | undefined);"
+            );
+        }
+        emit!(out, "    }},");
+    }
+
+    if has_streams {
+        emit!(
+            out,
+            "    stream(key: StreamKey, ...args: unknown[]): AsyncGenerator<unknown> {{"
+        );
+        if stream_mixed {
+            emit!(out, "      if (VOID_STREAMS.has(key)) {{");
+            emit!(
+                out,
+                "        return rpcStream(config, key, undefined, args[0] as CallOptions | undefined);"
+            );
+            emit!(out, "      }}");
+            emit!(
+                out,
+                "      return rpcStream(config, key, args[0], args[1] as CallOptions | undefined);"
+            );
+        } else if !void_streams.is_empty() {
+            emit!(
+                out,
+                "      return rpcStream(config, key, undefined, args[0] as CallOptions | undefined);"
+            );
+        } else {
+            emit!(
+                out,
+                "      return rpcStream(config, key, args[0], args[1] as CallOptions | undefined);"
             );
         }
         emit!(out, "    }},");
@@ -659,6 +798,70 @@ fn generate_mutation_overloads(manifest: &Manifest, preserve_docs: bool, out: &m
         emit!(
             out,
             "  mutate(key: \"{}\", input: {}, options: CallOptions): Promise<{}>;",
+            proc.name,
+            input_ts,
+            output_ts,
+        );
+    }
+}
+
+/// Generates stream overload signatures for the RpcClient interface.
+fn generate_stream_overloads(manifest: &Manifest, preserve_docs: bool, out: &mut String) {
+    let (void_streams, non_void_streams): (Vec<_>, Vec<_>) = manifest
+        .procedures
+        .iter()
+        .filter(|p| p.kind == ProcedureKind::Stream)
+        .partition(|p| is_void_input(p));
+
+    // Overload signatures for void-input streams
+    for proc in &void_streams {
+        if preserve_docs && let Some(doc) = &proc.docs {
+            emit_jsdoc(doc, "  ", out);
+        }
+        let output_ts = proc
+            .output
+            .as_ref()
+            .map(rust_type_to_ts)
+            .unwrap_or_else(|| "void".to_string());
+        emit!(
+            out,
+            "  stream(key: \"{}\"): AsyncGenerator<{}>;",
+            proc.name,
+            output_ts,
+        );
+        emit!(
+            out,
+            "  stream(key: \"{}\", options: CallOptions): AsyncGenerator<{}>;",
+            proc.name,
+            output_ts,
+        );
+    }
+
+    // Overload signatures for non-void-input streams
+    for proc in &non_void_streams {
+        if preserve_docs && let Some(doc) = &proc.docs {
+            emit_jsdoc(doc, "  ", out);
+        }
+        let input_ts = proc
+            .input
+            .as_ref()
+            .map(rust_type_to_ts)
+            .unwrap_or_else(|| "void".to_string());
+        let output_ts = proc
+            .output
+            .as_ref()
+            .map(rust_type_to_ts)
+            .unwrap_or_else(|| "void".to_string());
+        emit!(
+            out,
+            "  stream(key: \"{}\", input: {}): AsyncGenerator<{}>;",
+            proc.name,
+            input_ts,
+            output_ts,
+        );
+        emit!(
+            out,
+            "  stream(key: \"{}\", input: {}, options: CallOptions): AsyncGenerator<{}>;",
             proc.name,
             input_ts,
             output_ts,

@@ -199,10 +199,13 @@ function wrapWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T
 
 type QueryKey = keyof Procedures["queries"];
 type MutationKey = keyof Procedures["mutations"];
+type StreamKey = keyof Procedures["streams"];
 type QueryInput<K extends QueryKey> = Procedures["queries"][K]["input"];
 type QueryOutput<K extends QueryKey> = Procedures["queries"][K]["output"];
 type MutationInput<K extends MutationKey> = Procedures["mutations"][K]["input"];
 type MutationOutput<K extends MutationKey> = Procedures["mutations"][K]["output"];
+type StreamInput<K extends StreamKey> = Procedures["streams"][K]["input"];
+type StreamOutput<K extends StreamKey> = Procedures["streams"][K]["output"];
 
 export interface RpcClient {
   query(key: "get_time"): Promise<TimeResponse>;
