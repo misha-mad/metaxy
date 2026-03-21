@@ -275,7 +275,7 @@ pub(crate) fn build_stream_handler(
             #init_call
 
             let __router = ::metaxy::__private::axum::Router::new()
-                .route("/", ::metaxy::__private::axum::routing::post(__rpc_stream_handler));
+                .fallback(::metaxy::__private::axum::routing::post(__rpc_stream_handler));
 
             let __app = ::metaxy::__private::tower::ServiceBuilder::new()
                 .layer(::metaxy::__private::vercel_runtime::axum::VercelLayer::new())
