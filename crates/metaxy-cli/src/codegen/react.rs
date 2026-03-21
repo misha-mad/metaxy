@@ -268,6 +268,96 @@ const USE_MUTATION_IMPL: &str = r#"export function useMutation<K extends Mutatio
   };
 }"#;
 
+const STREAM_OPTIONS_INTERFACE: &str = r#"export interface StreamOptions<K extends StreamKey> {
+  callOptions?: CallOptions;
+  onChunk?: (chunk: StreamOutput<K>) => void;
+  onDone?: () => void;
+  onError?: (error: RpcError) => void;
+}"#;
+
+const STREAM_RESULT_INTERFACE: &str = r#"export interface StreamResult<K extends StreamKey> {
+  readonly chunks: StreamOutput<K>[];
+  readonly error: RpcError | undefined;
+  readonly isStreaming: boolean;
+  readonly isDone: boolean;
+  start: () => void;
+  stop: () => void;
+}"#;
+
+const USE_STREAM_IMPL: &str = r#"export function useStream<K extends StreamKey>(
+  client: RpcClient,
+  ...args: unknown[]
+): StreamResult<K> {
+  const key = args[0] as K;
+
+  let inputArg: StreamInput<K> | undefined;
+  let options: StreamOptions<K> | undefined;
+
+  if (VOID_STREAM_KEYS.has(key)) {
+    options = args[1] as StreamOptions<K> | undefined;
+  } else {
+    inputArg = args[1] as StreamInput<K>;
+    options = args[2] as StreamOptions<K> | undefined;
+  }
+
+  const [chunks, setChunks] = useState<StreamOutput<K>[]>([]);
+  const [error, setError] = useState<RpcError | undefined>();
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isDone, setIsDone] = useState(false);
+  const controllerRef = useRef<AbortController | undefined>();
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
+  const stop = useCallback(() => {
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+      controllerRef.current = undefined;
+    }
+  }, []);
+
+  const start = useCallback(() => {
+    stop();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setChunks([]);
+    setError(undefined);
+    setIsStreaming(true);
+    setIsDone(false);
+
+    (async () => {
+      try {
+        const callArgs: unknown[] = [key];
+        if (inputArg !== undefined) callArgs.push(inputArg);
+        const mergedCallOptions = { ...optionsRef.current?.callOptions, signal: controller.signal };
+        callArgs.push(mergedCallOptions);
+        const gen = (client.stream as (...a: unknown[]) => AsyncGenerator<unknown>)(...callArgs);
+        for await (const chunk of gen) {
+          if (controller.signal.aborted) break;
+          setChunks(prev => [...prev, chunk as StreamOutput<K>]);
+          optionsRef.current?.onChunk?.(chunk as StreamOutput<K>);
+        }
+        if (!controller.signal.aborted) {
+          setIsDone(true);
+          optionsRef.current?.onDone?.();
+        }
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          setError(e as RpcError);
+          optionsRef.current?.onError?.(e as RpcError);
+        }
+      } finally {
+        setIsStreaming(false);
+      }
+    })();
+  }, [client, key, inputArg, stop]);
+
+  useEffect(() => {
+    return () => stop();
+  }, [stop]);
+
+  return { chunks, error, isStreaming, isDone, start, stop };
+}"#;
+
 const FRAMEWORK_IMPORT: &str =
     "import { useState, useEffect, useRef, useCallback } from \"react\";";
 
@@ -289,11 +379,14 @@ pub fn generate_react_file(
         &FrameworkConfig {
             framework_import: Some(FRAMEWORK_IMPORT),
             query_fn_name: "useQuery",
+            stream_fn_name: "useStream",
             input_as_getter: false,
             query_interfaces: &[QUERY_OPTIONS_INTERFACE, QUERY_RESULT_INTERFACE],
             mutation_interfaces: &[MUTATION_OPTIONS_INTERFACE, MUTATION_RESULT_INTERFACE],
+            stream_interfaces: &[STREAM_OPTIONS_INTERFACE, STREAM_RESULT_INTERFACE],
             query_impl: USE_QUERY_IMPL,
             mutation_impl: USE_MUTATION_IMPL,
+            stream_impl: USE_STREAM_IMPL,
         },
     )
 }

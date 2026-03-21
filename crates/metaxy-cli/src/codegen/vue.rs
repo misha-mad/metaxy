@@ -276,6 +276,93 @@ const USE_MUTATION_IMPL: &str = r#"export function useMutation<K extends Mutatio
   };
 }"#;
 
+const STREAM_OPTIONS_INTERFACE: &str = r#"export interface StreamOptions<K extends StreamKey> {
+  callOptions?: CallOptions;
+  onChunk?: (chunk: StreamOutput<K>) => void;
+  onDone?: () => void;
+  onError?: (error: RpcError) => void;
+}"#;
+
+const STREAM_RESULT_INTERFACE: &str = r#"export interface StreamResult<K extends StreamKey> {
+  readonly chunks: Ref<StreamOutput<K>[]>;
+  readonly error: Ref<RpcError | undefined>;
+  readonly isStreaming: Ref<boolean>;
+  readonly isDone: Ref<boolean>;
+  start: () => void;
+  stop: () => void;
+}"#;
+
+const USE_STREAM_IMPL: &str = r#"export function useStream<K extends StreamKey>(
+  client: RpcClient,
+  ...args: unknown[]
+): StreamResult<K> {
+  const key = args[0] as K;
+
+  let inputFn: (() => StreamInput<K>) | undefined;
+  let options: StreamOptions<K> | undefined;
+
+  if (typeof args[1] === "function") {
+    inputFn = args[1] as () => StreamInput<K>;
+    options = args[2] as StreamOptions<K> | undefined;
+  } else if (typeof args[1] === "object" && args[1] !== null && !VOID_STREAM_KEYS.has(key)) {
+    inputFn = () => args[1] as StreamInput<K>;
+    options = args[2] as StreamOptions<K> | undefined;
+  } else {
+    options = args[1] as StreamOptions<K> | undefined;
+  }
+
+  const chunks = ref<StreamOutput<K>[]>([]) as Ref<StreamOutput<K>[]>;
+  const error = ref<RpcError | undefined>();
+  const isStreaming = ref(false);
+  const isDone = ref(false);
+  let controller: AbortController | undefined;
+
+  function stop() {
+    if (controller) {
+      controller.abort();
+      controller = undefined;
+    }
+  }
+
+  async function run() {
+    stop();
+    controller = new AbortController();
+    chunks.value = [];
+    error.value = undefined;
+    isStreaming.value = true;
+    isDone.value = false;
+
+    try {
+      const callArgs: unknown[] = [key];
+      const input = inputFn?.();
+      if (input !== undefined) callArgs.push(input);
+      const mergedCallOptions = { ...options?.callOptions, signal: controller.signal };
+      callArgs.push(mergedCallOptions);
+      const gen = (client.stream as (...a: unknown[]) => AsyncGenerator<unknown>)(...callArgs);
+      for await (const chunk of gen) {
+        if (controller.signal.aborted) break;
+        chunks.value = [...chunks.value, chunk as StreamOutput<K>];
+        options?.onChunk?.(chunk as StreamOutput<K>);
+      }
+      if (!controller.signal.aborted) {
+        isDone.value = true;
+        options?.onDone?.();
+      }
+    } catch (e) {
+      if (!controller.signal.aborted) {
+        error.value = e as RpcError;
+        options?.onError?.(error.value);
+      }
+    } finally {
+      isStreaming.value = false;
+    }
+  }
+
+  onScopeDispose(stop);
+
+  return { chunks, error, isStreaming, isDone, start: () => { void run(); }, stop };
+}"#;
+
 const FRAMEWORK_IMPORT: &str =
     "import { ref, computed, watch, onScopeDispose, type Ref, type ComputedRef } from \"vue\";";
 
@@ -297,11 +384,14 @@ pub fn generate_vue_file(
         &FrameworkConfig {
             framework_import: Some(FRAMEWORK_IMPORT),
             query_fn_name: "useQuery",
+            stream_fn_name: "useStream",
             input_as_getter: true,
             query_interfaces: &[QUERY_OPTIONS_INTERFACE, QUERY_RESULT_INTERFACE],
             mutation_interfaces: &[MUTATION_OPTIONS_INTERFACE, MUTATION_RESULT_INTERFACE],
+            stream_interfaces: &[STREAM_OPTIONS_INTERFACE, STREAM_RESULT_INTERFACE],
             query_impl: USE_QUERY_IMPL,
             mutation_impl: USE_MUTATION_IMPL,
+            stream_impl: USE_STREAM_IMPL,
         },
     )
 }

@@ -27,6 +27,9 @@ pub struct FrameworkConfig<'a> {
     /// Name of the query function (e.g. `"useQuery"` or `"createQuery"`).
     pub query_fn_name: &'a str,
 
+    /// Name of the stream function (e.g. `"useStream"` or `"createStream"`).
+    pub stream_fn_name: &'a str,
+
     /// Whether non-void query input is a getter `() => QueryInput<K>` (Svelte/Vue/Solid)
     /// or a direct value `QueryInput<K>` (React).
     pub input_as_getter: bool,
@@ -37,11 +40,17 @@ pub struct FrameworkConfig<'a> {
     /// TypeScript interface constants for mutations (options, result).
     pub mutation_interfaces: &'a [&'a str],
 
+    /// TypeScript interface constants for streams (options, result).
+    pub stream_interfaces: &'a [&'a str],
+
     /// Query implementation block (TypeScript source).
     pub query_impl: &'a str,
 
     /// Mutation implementation block (TypeScript source).
     pub mutation_impl: &'a str,
+
+    /// Stream implementation block (TypeScript source).
+    pub stream_impl: &'a str,
 }
 
 /// Generates a complete framework-specific reactive wrapper file.
@@ -64,13 +73,19 @@ pub fn generate_framework_file(
         .iter()
         .filter(|p| p.kind == ProcedureKind::Mutation)
         .collect();
+    let streams: Vec<_> = manifest
+        .procedures
+        .iter()
+        .filter(|p| p.kind == ProcedureKind::Stream)
+        .collect();
 
-    if queries.is_empty() && mutations.is_empty() {
+    if queries.is_empty() && mutations.is_empty() && streams.is_empty() {
         return String::new();
     }
 
     let has_queries = !queries.is_empty();
     let has_mutations = !mutations.is_empty();
+    let has_streams = !streams.is_empty();
 
     let mut out = String::with_capacity(4096);
 
@@ -101,11 +116,19 @@ pub fn generate_framework_file(
     emit_re_exports(&mut out, &type_names);
 
     // Type helpers
-    emit_type_helpers(&mut out, has_queries, has_mutations);
+    emit_type_helpers(&mut out, has_queries, has_mutations, has_streams);
     out.push('\n');
 
     // Void/non-void key unions + MutationArgs
-    emit_key_unions_and_args(&mut out, &queries, &mutations, has_queries, has_mutations);
+    emit_key_unions_and_args(
+        &mut out,
+        &queries,
+        &mutations,
+        &streams,
+        has_queries,
+        has_mutations,
+        has_streams,
+    );
     out.push('\n');
 
     // Interfaces
@@ -116,6 +139,11 @@ pub fn generate_framework_file(
     }
     if has_mutations {
         for iface in config.mutation_interfaces {
+            emit!(out, "{iface}\n");
+        }
+    }
+    if has_streams {
+        for iface in config.stream_interfaces {
             emit!(out, "{iface}\n");
         }
     }
@@ -144,6 +172,27 @@ pub fn generate_framework_file(
     // Mutation implementation
     if has_mutations {
         emit!(out, "{}\n", config.mutation_impl);
+    }
+
+    // Stream overloads + implementation
+    if has_streams {
+        let void_names: Vec<_> = streams
+            .iter()
+            .filter(|p| is_void_input(p))
+            .map(|p| format!("\"{}\"", p.name))
+            .collect();
+        emit!(
+            out,
+            "const VOID_STREAM_KEYS: Set<StreamKey> = new Set([{}]);\n",
+            void_names.join(", ")
+        );
+        emit_stream_overloads(
+            &streams,
+            config.stream_fn_name,
+            config.input_as_getter,
+            &mut out,
+        );
+        emit!(out, "{}\n", config.stream_impl);
     }
 
     out
@@ -182,8 +231,8 @@ fn emit_re_exports(out: &mut String, type_names: &[&str]) {
     }
 }
 
-/// Emits QueryKey/MutationKey type aliases and their Input/Output helpers.
-fn emit_type_helpers(out: &mut String, has_queries: bool, has_mutations: bool) {
+/// Emits QueryKey/MutationKey/StreamKey type aliases and their Input/Output helpers.
+fn emit_type_helpers(out: &mut String, has_queries: bool, has_mutations: bool, has_streams: bool) {
     if has_queries {
         emit!(out, "type QueryKey = keyof Procedures[\"queries\"];");
         emit!(
@@ -206,6 +255,17 @@ fn emit_type_helpers(out: &mut String, has_queries: bool, has_mutations: bool) {
             "type MutationOutput<K extends MutationKey> = Procedures[\"mutations\"][K][\"output\"];"
         );
     }
+    if has_streams {
+        emit!(out, "type StreamKey = keyof Procedures[\"streams\"];");
+        emit!(
+            out,
+            "type StreamInput<K extends StreamKey> = Procedures[\"streams\"][K][\"input\"];"
+        );
+        emit!(
+            out,
+            "type StreamOutput<K extends StreamKey> = Procedures[\"streams\"][K][\"output\"];"
+        );
+    }
 }
 
 /// Emits VoidQueryKey/NonVoidQueryKey unions and the MutationArgs conditional type.
@@ -213,8 +273,10 @@ fn emit_key_unions_and_args(
     out: &mut String,
     queries: &[&Procedure],
     mutations: &[&Procedure],
+    streams: &[&Procedure],
     has_queries: bool,
     has_mutations: bool,
+    has_streams: bool,
 ) {
     if has_queries {
         let void_queries: Vec<_> = queries.iter().filter(|p| is_void_input(p)).collect();
@@ -271,6 +333,26 @@ fn emit_key_unions_and_args(
             );
         }
     }
+
+    if has_streams {
+        let void_streams: Vec<_> = streams.iter().filter(|p| is_void_input(p)).collect();
+        let non_void_streams: Vec<_> = streams.iter().filter(|p| !is_void_input(p)).collect();
+
+        if !void_streams.is_empty() {
+            let names: Vec<_> = void_streams
+                .iter()
+                .map(|p| format!("\"{}\"", p.name))
+                .collect();
+            emit!(out, "type VoidStreamKey = {};", names.join(" | "));
+        }
+        if !non_void_streams.is_empty() {
+            let names: Vec<_> = non_void_streams
+                .iter()
+                .map(|p| format!("\"{}\"", p.name))
+                .collect();
+            emit!(out, "type NonVoidStreamKey = {};", names.join(" | "));
+        }
+    }
 }
 
 /// Emits overload signatures for the query function.
@@ -304,6 +386,39 @@ fn emit_query_overloads(
         emit!(
             out,
             "export function {fn_name}<K extends \"{}\">(client: RpcClient, key: K, input: {input_type}, options?: QueryOptions<K> | (() => QueryOptions<K>)): QueryResult<K>;",
+            proc.name,
+        );
+    }
+}
+
+/// Emits overload signatures for the stream function.
+fn emit_stream_overloads(
+    streams: &[&Procedure],
+    fn_name: &str,
+    input_as_getter: bool,
+    out: &mut String,
+) {
+    let (void_streams, non_void_streams): (Vec<&&Procedure>, Vec<&&Procedure>) =
+        streams.iter().partition(|p| is_void_input(p));
+
+    for proc in &void_streams {
+        emit!(
+            out,
+            "export function {fn_name}<K extends \"{}\">(client: RpcClient, key: K, options?: StreamOptions<K>): StreamResult<K>;",
+            proc.name,
+        );
+    }
+
+    let input_type = if input_as_getter {
+        "() => StreamInput<K>"
+    } else {
+        "StreamInput<K>"
+    };
+
+    for proc in &non_void_streams {
+        emit!(
+            out,
+            "export function {fn_name}<K extends \"{}\">(client: RpcClient, key: K, input: {input_type}, options?: StreamOptions<K>): StreamResult<K>;",
             proc.name,
         );
     }

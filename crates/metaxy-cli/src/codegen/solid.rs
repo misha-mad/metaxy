@@ -284,6 +284,95 @@ const CREATE_MUTATION_IMPL: &str = r#"export function createMutation<K extends M
   };
 }"#;
 
+const STREAM_OPTIONS_INTERFACE: &str = r#"export interface StreamOptions<K extends StreamKey> {
+  callOptions?: CallOptions;
+  onChunk?: (chunk: StreamOutput<K>) => void;
+  onDone?: () => void;
+  onError?: (error: RpcError) => void;
+}"#;
+
+const STREAM_RESULT_INTERFACE: &str = r#"export interface StreamResult<K extends StreamKey> {
+  readonly chunks: () => StreamOutput<K>[];
+  readonly error: () => RpcError | undefined;
+  readonly isStreaming: () => boolean;
+  readonly isDone: () => boolean;
+  start: () => void;
+  stop: () => void;
+}"#;
+
+const CREATE_STREAM_IMPL: &str = r#"export function createStream<K extends StreamKey>(
+  client: RpcClient,
+  ...args: unknown[]
+): StreamResult<K> {
+  const key = args[0] as K;
+
+  let inputFn: (() => StreamInput<K>) | undefined;
+  let options: StreamOptions<K> | undefined;
+
+  if (typeof args[1] === "function") {
+    inputFn = args[1] as () => StreamInput<K>;
+    options = args[2] as StreamOptions<K> | undefined;
+  } else if (typeof args[1] === "object" && args[1] !== null && !VOID_STREAM_KEYS.has(key)) {
+    inputFn = () => args[1] as StreamInput<K>;
+    options = args[2] as StreamOptions<K> | undefined;
+  } else {
+    options = args[1] as StreamOptions<K> | undefined;
+  }
+
+  const [chunks, setChunks] = createSignal<StreamOutput<K>[]>([]);
+  const [error, setError] = createSignal<RpcError | undefined>();
+  const [isStreaming, setIsStreaming] = createSignal(false);
+  const [isDone, setIsDone] = createSignal(false);
+  let controller: AbortController | undefined;
+
+  function stop() {
+    if (controller) {
+      controller.abort();
+      controller = undefined;
+    }
+  }
+
+  async function run() {
+    stop();
+    controller = new AbortController();
+    batch(() => {
+      setChunks([]);
+      setError(undefined);
+      setIsStreaming(true);
+      setIsDone(false);
+    });
+
+    try {
+      const callArgs: unknown[] = [key];
+      const input = inputFn?.();
+      if (input !== undefined) callArgs.push(input);
+      const mergedCallOptions = { ...options?.callOptions, signal: controller.signal };
+      callArgs.push(mergedCallOptions);
+      const gen = (client.stream as (...a: unknown[]) => AsyncGenerator<unknown>)(...callArgs);
+      for await (const chunk of gen) {
+        if (controller.signal.aborted) break;
+        setChunks(prev => [...prev, chunk as StreamOutput<K>]);
+        options?.onChunk?.(chunk as StreamOutput<K>);
+      }
+      if (!controller.signal.aborted) {
+        setIsDone(true);
+        options?.onDone?.();
+      }
+    } catch (e) {
+      if (!controller.signal.aborted) {
+        setError(e as RpcError);
+        options?.onError?.(e as RpcError);
+      }
+    } finally {
+      setIsStreaming(false);
+    }
+  }
+
+  onCleanup(stop);
+
+  return { chunks, error, isStreaming, isDone, start: () => { void run(); }, stop };
+}"#;
+
 const FRAMEWORK_IMPORT: &str = "import { createSignal, createEffect, createMemo, onCleanup, batch, untrack } from \"solid-js\";";
 
 /// Generates the complete SolidJS reactive primitives file content from a manifest.
@@ -309,6 +398,9 @@ pub fn generate_solid_file(
             mutation_interfaces: &[MUTATION_OPTIONS_INTERFACE, MUTATION_RESULT_INTERFACE],
             query_impl: CREATE_QUERY_IMPL,
             mutation_impl: CREATE_MUTATION_IMPL,
+            stream_fn_name: "createStream",
+            stream_interfaces: &[STREAM_OPTIONS_INTERFACE, STREAM_RESULT_INTERFACE],
+            stream_impl: CREATE_STREAM_IMPL,
         },
     )
 }
