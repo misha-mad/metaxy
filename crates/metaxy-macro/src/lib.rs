@@ -99,9 +99,11 @@ use syn::{ItemFn, parse_macro_input};
 
 mod attrs;
 mod codegen;
+mod codegen_stream;
 
 use attrs::parse_handler_attrs;
 use codegen::{HandlerKind, build_handler};
+use codegen_stream::build_stream_handler;
 
 /// Generates a Vercel-compatible lambda handler from an async **query** function.
 ///
@@ -390,6 +392,93 @@ pub fn rpc_mutation(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
     let input_fn = parse_macro_input!(item as ItemFn);
     build_handler(input_fn, HandlerKind::Mutation, attrs)
+        .map(Into::into)
+        .unwrap_or_else(|e| e.to_compile_error().into())
+}
+
+/// Generates a Vercel-compatible **streaming** lambda handler from an async function.
+///
+/// The annotated function becomes a **POST** endpoint that returns an SSE
+/// (`text/event-stream`) response. The handler receives a [`StreamSender`]
+/// for emitting typed chunks to the client.
+///
+/// Unlike `#[rpc_query]` and `#[rpc_mutation]`, this macro generates an
+/// Axum-based binary using `VercelLayer` and `stream_response`.
+///
+/// # Examples
+///
+/// **Basic streaming:**
+///
+/// ```rust,ignore
+/// use metaxy::{rpc_stream, StreamSender};
+///
+/// #[rpc_stream]
+/// async fn chat(input: ChatInput, tx: StreamSender) {
+///     for token in generate_tokens(&input.prompt) {
+///         tx.send(token).await.ok();
+///     }
+/// }
+/// ```
+///
+/// **No input:**
+///
+/// ```rust,ignore
+/// use metaxy::{rpc_stream, StreamSender};
+///
+/// #[rpc_stream]
+/// async fn heartbeat(tx: StreamSender) {
+///     loop {
+///         tx.send("ping").await.ok();
+///         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+///     }
+/// }
+/// ```
+///
+/// **With timeout:**
+///
+/// ```rust,ignore
+/// #[rpc_stream(timeout = "30s")]
+/// async fn generate(input: Prompt, tx: StreamSender) {
+///     // stream will be cut off after 30 seconds
+/// }
+/// ```
+///
+/// # Supported attributes
+///
+/// - `init = "fn_name"` — cold-start initialization, same as query/mutation.
+/// - `timeout = "30s"` — maximum stream duration.
+///
+/// `cache`, `stale`, and `idempotent` are **not** supported on streams.
+///
+/// # Compile errors
+///
+/// - Missing `StreamSender` parameter.
+/// - Return type present (streams must return `()`).
+/// - `cache`, `stale`, or `idempotent` attribute used.
+#[proc_macro_attribute]
+pub fn rpc_stream(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attrs = match parse_handler_attrs(attr) {
+        Ok(a) => a,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    if attrs.cache_config.is_some() {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "rpc_stream does not support cache/stale attributes",
+        )
+        .to_compile_error()
+        .into();
+    }
+    if attrs.idempotent {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "rpc_stream does not support the idempotent attribute",
+        )
+        .to_compile_error()
+        .into();
+    }
+    let input_fn = parse_macro_input!(item as ItemFn);
+    build_stream_handler(input_fn, attrs)
         .map(Into::into)
         .unwrap_or_else(|e| e.to_compile_error().into())
 }

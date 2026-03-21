@@ -21,9 +21,7 @@
 //! }
 //! ```
 
-pub use metaxy_macro::{rpc_mutation, rpc_query};
-// Re-exported once the macro is added in metaxy-macro:
-// pub use metaxy_macro::rpc_stream;
+pub use metaxy_macro::{rpc_mutation, rpc_query, rpc_stream};
 
 pub use serde::{Deserialize, Serialize};
 
