@@ -1,6 +1,6 @@
 [package]
 name = "metaxy"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "End-to-end typesafe RPC between Rust and TypeScript"
 license = "MIT OR Apache-2.0"

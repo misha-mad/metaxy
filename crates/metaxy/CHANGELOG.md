@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/misha-mad/metaxy/compare/metaxy-v0.1.4...metaxy-v0.1.5) - 2026-03-21
+
+### Added
+
+- *(metaxy-macro)* add #[rpc_stream] attribute macro with Axum-based codegen
+- *(metaxy)* add StreamSender type and streaming dependencies
+
+### Fixed
+
+- make StreamSender generic for typed chunk extraction
+- *(metaxy)* use std::io::Error in StreamSender channel type
+
+### Other
+
+- add comprehensive streaming test coverage
+
 ## [0.1.4](https://github.com/misha-mad/metaxy/compare/metaxy-v0.1.3...metaxy-v0.1.4) - 2026-02-28
 
 ### Other
