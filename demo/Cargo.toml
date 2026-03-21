@@ -68,3 +68,11 @@ path = "api/dedup_demo.rs"
 [[bin]]
 name = "cookie_demo"
 path = "api/cookie_demo.rs"
+
+[[bin]]
+name = "countdown"
+path = "api/countdown.rs"
+
+[[bin]]
+name = "token_stream"
+path = "api/token_stream.rs"
