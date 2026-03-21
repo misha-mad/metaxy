@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/misha-mad/metaxy/compare/metaxy-cli-v0.4.1...metaxy-cli-v0.5.0) - 2026-03-21
+
+### Added
+
+- *(metaxy-cli)* add createStream/useStream to framework wrappers
+- *(metaxy-cli)* add stream() method with SSE parsing to RPC client codegen
+- *(metaxy-cli)* add streams section to Procedures type in TypeScript codegen
+- *(metaxy-cli)* recognize #[rpc_stream] in parser and skip StreamSender param
+- *(metaxy-cli)* add ProcedureKind::Stream variant
+
+### Fixed
+
+- make StreamSender generic for typed chunk extraction
+
+### Other
+
+- add comprehensive streaming test coverage
+- *(metaxy-cli)* add React, Vue, SolidJS to architecture overview
+- *(metaxy-cli)* replace mod.rs with new-style module file
+
 ## [0.4.1](https://github.com/misha-mad/metaxy/compare/metaxy-cli-v0.4.0...metaxy-cli-v0.4.1) - 2026-02-28
 
 ### Added
