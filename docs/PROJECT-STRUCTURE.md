@@ -4,10 +4,13 @@
 metaxy/
 ├── crates/
 │   ├── metaxy/                   # Facade crate (re-exports macros + runtime deps)
-│   │   └── src/lib.rs            #   pub use metaxy_macro::{rpc_query, rpc_mutation}
+│   │   └── src/
+│   │       ├── lib.rs            #   pub use metaxy_macro::{rpc_query, rpc_mutation, rpc_stream}
+│   │       └── stream.rs         #   StreamSender<T>, SendError (SSE chunk sender)
 │   ├── metaxy-macro/             # Proc-macro crate
 │   │   └── src/
-│   │       ├── lib.rs            #   #[rpc_query] / #[rpc_mutation]
+│   │       ├── lib.rs            #   #[rpc_query] / #[rpc_mutation] / #[rpc_stream]
+│   │       ├── codegen_stream.rs #   Stream handler codegen (Axum + VercelLayer)
 │   │       └── tests.rs          #   Macro expansion tests
 │   └── metaxy-cli/               # CLI crate (library + binary: `metaxy`)
 │       ├── src/
@@ -39,12 +42,12 @@ metaxy/
 │           ├── extract.rs        #   Parser extraction from Rust source
 │           ├── types.rs          #   syn::Type → RustType + RenameRule conversion
 │           ├── typescript.rs     #   TypeScript codegen (type mapping, JSDoc, serde)
-│           ├── client.rs         #   Client codegen (RpcClient, overloads)
+│           ├── client.rs         #   Client codegen (RpcClient, overloads, stream)
 │           ├── overrides.rs      #   Type override tests
-│           ├── svelte.rs         #   Svelte codegen (createQuery, createMutation)
-│           ├── react.rs          #   React codegen (useQuery, useMutation)
-│           ├── vue.rs            #   Vue codegen (useQuery, useMutation)
-│           ├── solid.rs          #   SolidJS codegen (createQuery, createMutation)
+│           ├── svelte.rs         #   Svelte codegen (createQuery, createMutation, createStream)
+│           ├── react.rs          #   React codegen (useQuery, useMutation, useStream)
+│           ├── vue.rs            #   Vue codegen (useQuery, useMutation, useStream)
+│           ├── solid.rs          #   SolidJS codegen (createQuery, createMutation, createStream)
 │           └── snapshots/        #   insta snapshot files (auto-generated)
 ├── demo/                         # Demo application (SvelteKit) + Rust lambdas
 │   ├── api/                      # Rust lambdas (each file = one endpoint)
@@ -62,7 +65,9 @@ metaxy/
 │   │   ├── dedup_demo.rs         #   GET  /api/dedup_demo (request deduplication)
 │   │   ├── idempotent_demo.rs    #   POST /api/idempotent_demo (idempotent mutation)
 │   │   ├── init_demo.rs          #   GET  /api/init_demo (cold-start init)
-│   │   └── timeout_demo.rs       #   GET  /api/timeout_demo (timeout / abort)
+│   │   ├── timeout_demo.rs       #   GET  /api/timeout_demo (timeout / abort)
+│   │   ├── countdown.rs          #   POST /api/countdown (streaming countdown)
+│   │   └── token_stream.rs       #   POST /api/token_stream (LLM-style streaming)
 │   ├── Cargo.toml                # Rust package for demo lambdas
 │   ├── metaxy.config.toml        # CLI config file
 │   ├── src/
