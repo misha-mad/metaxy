@@ -12,7 +12,7 @@
 			children: [
 				{ label: 'Queries', href: '/docs/procedures/queries' },
 				{ label: 'Mutations', href: '/docs/procedures/mutations' },
-				{ label: 'Streaming', href: '/docs/procedures/streaming', badge: 'soon' }
+				{ label: 'Streaming', href: '/docs/procedures/streaming' }
 			]
 		},
 		{
