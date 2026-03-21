@@ -60,16 +60,7 @@ See the [Getting Started guide](https://metaxy-demo.vercel.app/docs/getting-star
 
 ## Documentation
 
-Full documentation is available at **[metaxy-demo.vercel.app/docs](https://metaxy-demo.vercel.app/docs/getting-started)**:
-
-- [Procedures](https://metaxy-demo.vercel.app/docs/procedures/queries) — queries, mutations, streaming
-- [Macro Attributes](https://metaxy-demo.vercel.app/docs/macros/attributes) — cache, stale, init, timeout, idempotent
-- [Codegen](https://metaxy-demo.vercel.app/docs/codegen/type-mappings) — type mappings, serde, generics, field naming, branded newtypes, bigint, type overrides
-- [Client](https://metaxy-demo.vercel.app/docs/client/config) — config, headers, timeout, hooks, retry, dedup, custom fetch, serialization
-- [Frameworks](https://metaxy-demo.vercel.app/docs/frameworks/svelte) — Svelte 5, React, Vue 3, SolidJS
-- [CLI](https://metaxy-demo.vercel.app/docs/cli/commands) — generate, scan, watch
-- [Config File](https://metaxy-demo.vercel.app/docs/config-file) — metaxy.config.toml reference
-- [Error Handling](https://metaxy-demo.vercel.app/docs/error-handling)
+Full documentation is available at **[metaxy-demo.vercel.app/docs](https://metaxy-demo.vercel.app/docs/getting-started)**.
 
 ## Project Structure
 
