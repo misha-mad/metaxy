@@ -1045,3 +1045,27 @@ fn stream_factory_method_present() {
     let output = generate_client_file(&manifest, "./rpc-types", false);
     assert!(output.contains("stream(key: StreamKey"));
 }
+
+#[test]
+fn stream_helper_handles_error_event() {
+    let manifest = common::make_manifest(vec![common::make_stream(
+        "chat",
+        Some(RustType::simple("String")),
+        Some(RustType::simple("String")),
+    )]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let stream_start = output.find("async function* rpcStream").unwrap();
+    let stream_body = &output[stream_start..];
+    // SSE parser must track event type per message block
+    assert!(stream_body.contains("eventType"), "must track SSE event type");
+    // Must detect event: error lines
+    assert!(
+        stream_body.contains("event: "),
+        "must parse event: field from SSE"
+    );
+    // Must throw RpcError on error events rather than yielding the payload
+    assert!(
+        stream_body.contains("throw new RpcError"),
+        "must throw RpcError on event: error"
+    );
+}

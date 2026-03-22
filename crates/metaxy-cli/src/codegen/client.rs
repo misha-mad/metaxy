@@ -245,11 +245,20 @@ const STREAM_HELPER: &str = r#"async function* rpcStream<T>(
       const parts = buffer.split("\n\n");
       buffer = parts.pop()!;
       for (const part of parts) {
+        let eventType = "message";
+        const dataLines: string[] = [];
         for (const line of part.split("\n")) {
-          if (line.startsWith("data: ")) {
-            const payload = line.slice(6);
-            yield (config.deserialize ? config.deserialize(payload) : JSON.parse(payload)) as T;
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            dataLines.push(line.slice(6));
           }
+        }
+        for (const payload of dataLines) {
+          if (eventType === "error") {
+            throw new RpcError(500, `RPC stream error on "${procedure}": ${payload}`, null);
+          }
+          yield (config.deserialize ? config.deserialize(payload) : JSON.parse(payload)) as T;
         }
       }
     }
