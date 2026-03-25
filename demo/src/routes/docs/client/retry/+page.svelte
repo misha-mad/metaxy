@@ -40,6 +40,15 @@
 	<SectionHeading>Custom Retry Logic</SectionHeading>
 	<CodeBlock html={data.highlighted['retryCustom']} />
 
+	<SectionHeading>Streaming</SectionHeading>
+	<p class="text-text-muted leading-relaxed text-sm">
+		Retry is <strong>not supported</strong> for <Code>stream()</Code> calls. Streams open a
+		long-lived SSE connection, and the server manages their lifetime via the
+		<a href="/docs/macros/timeout" class="text-accent-ts hover:underline"><Code>timeout</Code></a>
+		attribute. Restarting a stream after failure is the application's responsibility — use
+		<Code>start()</Code> on the framework wrapper to begin a new stream.
+	</p>
+
 	<SectionHeading>Idempotent Mutations</SectionHeading>
 	<p class="text-text-muted leading-relaxed text-sm">
 		By default, mutations are never retried — even with a retry policy configured. To opt a mutation
