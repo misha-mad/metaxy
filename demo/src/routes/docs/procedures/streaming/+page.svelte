@@ -105,6 +105,70 @@
 		</table>
 	</div>
 
+	<SectionHeading>Client-Side Options</SectionHeading>
+	<p class="text-text-muted text-sm mb-3">
+		How <Code>RpcClientConfig</Code> and <Code>CallOptions</Code> behave for streams:
+	</p>
+	<div class="overflow-x-auto">
+		<table class="w-full text-sm text-left">
+			<thead class="text-text-muted border-b border-border">
+				<tr>
+					<th class="py-2 pr-4">Option</th>
+					<th class="py-2 pr-4">Stream</th>
+					<th class="py-2">Notes</th>
+				</tr>
+			</thead>
+			<tbody class="text-text-primary">
+				<tr class="border-b border-border/50">
+					<td class="py-2 pr-4 font-mono text-xs"><Code>callOptions.signal</Code></td>
+					<td class="py-2 pr-4 text-green-400">Yes</td>
+					<td class="py-2 text-text-muted"
+						>Merged with internal controller via <Code>AbortSignal.any()</Code></td
+					>
+				</tr>
+				<tr class="border-b border-border/50">
+					<td class="py-2 pr-4 font-mono text-xs"><Code>callOptions.timeout</Code></td>
+					<td class="py-2 pr-4 text-green-400">Yes</td>
+					<td class="py-2 text-text-muted">Aborts the SSE connection after the given duration</td>
+				</tr>
+				<tr class="border-b border-border/50">
+					<td class="py-2 pr-4 font-mono text-xs"><Code>onRequest</Code></td>
+					<td class="py-2 pr-4 text-green-400">Yes</td>
+					<td class="py-2 text-text-muted">Fires before the fetch</td>
+				</tr>
+				<tr class="border-b border-border/50">
+					<td class="py-2 pr-4 font-mono text-xs"><Code>onError</Code></td>
+					<td class="py-2 pr-4 text-green-400">Yes</td>
+					<td class="py-2 text-text-muted">Fires on non-ok response or network error</td>
+				</tr>
+				<tr class="border-b border-border/50">
+					<td class="py-2 pr-4 font-mono text-xs"><Code>onResponse</Code></td>
+					<td class="py-2 pr-4 text-red-400">No</td>
+					<td class="py-2 text-text-muted"
+						>No single response body — use <Code>onChunk</Code> / <Code>onDone</Code> in framework wrappers</td
+					>
+				</tr>
+				<tr class="border-b border-border/50">
+					<td class="py-2 pr-4 font-mono text-xs"><Code>retry</Code></td>
+					<td class="py-2 pr-4 text-red-400">No</td>
+					<td class="py-2 text-text-muted">Stream restart is the application's responsibility</td>
+				</tr>
+				<tr class="border-b border-border/50">
+					<td class="py-2 pr-4 font-mono text-xs"><Code>config.timeout</Code></td>
+					<td class="py-2 pr-4 text-red-400">No</td>
+					<td class="py-2 text-text-muted"
+						>Server manages stream duration via <Code>#[rpc_stream(timeout)]</Code></td
+					>
+				</tr>
+				<tr>
+					<td class="py-2 pr-4 font-mono text-xs"><Code>dedupe</Code></td>
+					<td class="py-2 pr-4 text-red-400">No</td>
+					<td class="py-2 text-text-muted">Each stream call opens its own SSE connection</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+
 	<!-- Try it -->
 	<SectionHeading level="large">Try it</SectionHeading>
 

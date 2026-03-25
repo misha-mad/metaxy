@@ -64,9 +64,9 @@
 	<CodeBlock html={data.highlighted['dedupDisablePerCall']} />
 
 	<p class="text-text-muted leading-relaxed text-sm">
-		Mutations are never deduplicated. Each per-caller
-		<Code>AbortSignal</Code> is wrapped independently — aborting one caller does not affect others sharing
-		the same in-flight promise.
+		Mutations and streams are never deduplicated. Each stream call opens its own SSE connection.
+		Each per-caller <Code>AbortSignal</Code> is wrapped independently — aborting one caller does not affect
+		others sharing the same in-flight promise.
 	</p>
 
 	<!-- Try it -->

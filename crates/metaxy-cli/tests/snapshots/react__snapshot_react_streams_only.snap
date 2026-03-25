@@ -85,7 +85,9 @@ export function useStream<K extends StreamKey>(
       try {
         const callArgs: unknown[] = [key];
         if (inputArg !== undefined) callArgs.push(inputArg);
-        const mergedCallOptions = { ...optionsRef.current?.callOptions, signal: controller.signal };
+        const userSignal = optionsRef.current?.callOptions?.signal;
+        const mergedSignal = userSignal ? AbortSignal.any([controller.signal, userSignal]) : controller.signal;
+        const mergedCallOptions = { ...optionsRef.current?.callOptions, signal: mergedSignal };
         callArgs.push(mergedCallOptions);
         const gen = (client.stream as (...a: unknown[]) => AsyncGenerator<unknown>)(...callArgs);
         for await (const chunk of gen) {

@@ -346,7 +346,9 @@ const CREATE_STREAM_IMPL: &str = r#"export function createStream<K extends Strea
       const callArgs: unknown[] = [key];
       const input = inputFn?.();
       if (input !== undefined) callArgs.push(input);
-      const mergedCallOptions = { ...options?.callOptions, signal: controller.signal };
+      const userSignal = options?.callOptions?.signal;
+      const mergedSignal = userSignal ? AbortSignal.any([controller.signal, userSignal]) : controller.signal;
+      const mergedCallOptions = { ...options?.callOptions, signal: mergedSignal };
       callArgs.push(mergedCallOptions);
       const gen = (client.stream as (...a: unknown[]) => AsyncGenerator<unknown>)(...callArgs);
       for await (const chunk of gen) {

@@ -570,6 +570,65 @@ fn stream_with_init_and_state() {
     assert!(code.contains("__RPC_STATE"));
 }
 
+#[test]
+fn stream_with_timeout_and_input() {
+    let func = parse_fn("async fn chat(input: ChatInput, tx: StreamSender) {}");
+    let attrs = HandlerAttrs {
+        timeout_secs: Some(60),
+        ..HandlerAttrs::default()
+    };
+    let code = build_stream_handler(func, attrs).unwrap().to_string();
+    assert!(code.contains("__input"));
+    assert!(code.contains("timeout_at"));
+    assert!(code.contains("Duration :: from_secs (60u64)"));
+    assert!(code.contains("event: error"));
+}
+
+#[test]
+fn stream_with_init_and_timeout() {
+    let func = parse_fn("async fn events(tx: StreamSender) {}");
+    let attrs = HandlerAttrs {
+        init_fn: Some("setup".into()),
+        timeout_secs: Some(45),
+        ..HandlerAttrs::default()
+    };
+    let code = build_stream_handler(func, attrs).unwrap().to_string();
+    assert!(code.contains("setup () . await"));
+    assert!(code.contains("timeout_at"));
+    assert!(code.contains("Duration :: from_secs (45u64)"));
+    assert!(code.contains("event: error"));
+}
+
+#[test]
+fn stream_with_all_attrs_and_params() {
+    let func = parse_fn(
+        "async fn chat(input: ChatInput, state: &AppState, headers: Headers, tx: StreamSender) {}",
+    );
+    let attrs = HandlerAttrs {
+        init_fn: Some("setup".into()),
+        timeout_secs: Some(120),
+        ..HandlerAttrs::default()
+    };
+    let code = build_stream_handler(func, attrs).unwrap().to_string();
+    assert!(code.contains("__input"), "must parse input");
+    assert!(code.contains("__state"), "must inject state");
+    assert!(code.contains("__headers"), "must pass headers");
+    assert!(
+        code.contains("OnceLock"),
+        "must use OnceLock for state init"
+    );
+    assert!(code.contains("setup"), "must call init function");
+    assert!(code.contains("timeout_at"), "must apply timeout");
+    assert!(
+        code.contains("Duration :: from_secs (120u64)"),
+        "must use 120s"
+    );
+    assert!(
+        code.contains("event: error"),
+        "timeout must send SSE error event"
+    );
+}
+
 // --- build_stream_handler: error cases ---
 
 #[test]

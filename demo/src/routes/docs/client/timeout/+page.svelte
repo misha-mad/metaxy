@@ -122,6 +122,18 @@
 	</p>
 	<CodeBlock html={data.highlighted['combinedSignals']} />
 
+	<SectionHeading>Streaming</SectionHeading>
+	<p class="text-text-muted text-sm mb-2">
+		For <Code>stream()</Code> calls, <Code>callOptions.timeout</Code> and
+		<Code>callOptions.signal</Code> work normally — they abort the SSE connection. However, the global
+		<Code>config.timeout</Code> and per-procedure timeouts from
+		<Code>PROCEDURE_TIMEOUTS</Code> are <strong>not applied</strong> to streams. The server manages
+		stream duration via the
+		<a href="/docs/macros/timeout" class="text-accent-ts hover:underline"
+			><Code>#[rpc_stream(timeout)]</Code></a
+		> attribute instead.
+	</p>
+
 	<SectionHeading>Error Handling</SectionHeading>
 	<p class="text-text-muted text-sm mb-2">
 		Timeouts and manual aborts throw a <Code>DOMException</Code>, not an <Code>RpcError</Code>.
