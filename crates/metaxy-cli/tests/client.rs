@@ -958,6 +958,275 @@ fn retry_guard_checks_idempotent() {
     assert!(output.contains("IDEMPOTENT_MUTATIONS.has(procedure)"));
 }
 
+// --- rpcFetch: headers as function ---
+
+#[test]
+fn fetch_helper_supports_headers_as_function() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("typeof config.headers === \"function\""),
+        "rpcFetch must support config.headers as an async function"
+    );
+}
+
+// --- rpcFetch: retry loop behavior ---
+
+#[test]
+fn fetch_helper_retry_loop_uses_max_attempts() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("1 + (config.retry?.attempts ?? 0)"),
+        "maxAttempts = 1 + configured attempts (default 0 = no retry)"
+    );
+    assert!(
+        fetch_body.contains("for (let attempt = 1; attempt <= maxAttempts; attempt++)"),
+        "rpcFetch must loop from 1 to maxAttempts"
+    );
+}
+
+#[test]
+fn fetch_helper_retry_checks_retry_on_status_codes() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("retryOn.includes(res.status)"),
+        "rpcFetch must check status code against retryOn list before retrying"
+    );
+    assert!(
+        fetch_body.contains("DEFAULT_RETRY_ON"),
+        "rpcFetch must have a default retryOn list"
+    );
+}
+
+#[test]
+fn fetch_helper_retry_only_get_or_idempotent() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("method === \"GET\" || IDEMPOTENT_MUTATIONS.has(procedure)"),
+        "retry guard: only GET requests and idempotent mutations may be retried"
+    );
+}
+
+#[test]
+fn fetch_helper_retry_delay_supports_number_and_function() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("typeof config.retry.delay === \"function\""),
+        "retry delay must support both a fixed number and a function(attempt)"
+    );
+}
+
+#[test]
+fn fetch_helper_on_error_reports_attempt_and_will_retry() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    // HTTP error path
+    assert!(
+        fetch_body.contains("willRetry: canRetry"),
+        "onError for HTTP errors must report whether the request will be retried"
+    );
+    // Network error path
+    assert!(
+        fetch_body.contains("willRetry: isRetryable"),
+        "onError for network errors must report whether the request will be retried"
+    );
+}
+
+// --- rpcFetch: onRequest headers mutation ---
+
+#[test]
+fn fetch_helper_on_request_headers_flow_into_init() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    // reqCtx is built with headers copy, passed to onRequest, then used in init
+    assert!(
+        fetch_body.contains("headers: { ...baseHeaders }"),
+        "reqCtx.headers must be a shallow copy of baseHeaders"
+    );
+    assert!(
+        fetch_body.contains("await config.onRequest?.(reqCtx)"),
+        "onRequest is called with reqCtx containing mutable headers"
+    );
+    assert!(
+        fetch_body.contains("headers: reqCtx.headers"),
+        "init.headers must use reqCtx.headers (post-mutation by onRequest)"
+    );
+}
+
+// --- rpcFetch: GET query string ---
+
+#[test]
+fn fetch_helper_get_serializes_input_to_query_string() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("encodeURIComponent"),
+        "GET input must be URI-encoded in query string"
+    );
+    assert!(
+        fetch_body.contains("?input="),
+        "GET input must be appended as ?input= parameter"
+    );
+}
+
+#[test]
+fn fetch_helper_get_uses_custom_serialize_for_query_string() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    // The GET branch should use config.serialize if available
+    assert!(
+        fetch_body.contains("config.serialize ? config.serialize(input) : JSON.stringify(input)"),
+        "GET query string must use config.serialize when available"
+    );
+}
+
+// --- rpcFetch: POST Content-Type ---
+
+#[test]
+fn fetch_helper_post_sets_content_type_only_with_input() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("method === \"POST\" && input !== undefined"),
+        "Content-Type: application/json must only be set for POST with input"
+    );
+}
+
+// --- rpcFetch: timeout per attempt ---
+
+#[test]
+fn fetch_helper_timeout_created_inside_retry_loop() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    // timeoutId and AbortController must be inside the for-loop so each attempt gets a fresh timeout
+    let loop_start = fetch_body.find("for (let attempt").unwrap();
+    let loop_body = &fetch_body[loop_start..];
+    assert!(
+        loop_body.contains("let timeoutId"),
+        "timeoutId must be declared inside the retry loop (fresh per attempt)"
+    );
+    assert!(
+        loop_body.contains("new AbortController()"),
+        "each retry attempt must create a new AbortController for timeout"
+    );
+}
+
+// --- rpcFetch: clearTimeout cleanup ---
+
+#[test]
+fn fetch_helper_clears_timeout_in_finally() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("clearTimeout(timeoutId)"),
+        "timeout must be cleared in finally block to prevent leaks"
+    );
+}
+
+// --- rpcFetch: non-RpcError handling ---
+
+#[test]
+fn fetch_helper_rethrows_rpc_error_immediately() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("if (err instanceof RpcError) throw err"),
+        "RpcError must be rethrown immediately without retrying (it already went through retryOn check)"
+    );
+}
+
+#[test]
+fn fetch_helper_network_errors_retried_without_status_check() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    // After the RpcError check, non-RpcErrors (network failures) use isRetryable directly
+    // — no retryOn check, because network errors have no HTTP status code
+    let catch_block = fetch_body.find("if (err instanceof RpcError) throw err").unwrap();
+    let after_rpc_check = &fetch_body[catch_block..];
+    assert!(
+        after_rpc_check.contains("if (!isRetryable) throw err"),
+        "network errors must be retried based on isRetryable (no retryOn check needed)"
+    );
+}
+
+// --- rpcFetch: effective timeout fallback chain ---
+
+#[test]
+fn fetch_helper_timeout_fallback_chain_correct_order() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    // callOptions?.timeout takes priority, then per-procedure, then global config
+    assert!(
+        fetch_body.contains("callOptions?.timeout ?? PROCEDURE_TIMEOUTS[procedure] ?? config.timeout"),
+        "timeout fallback: callOptions.timeout → PROCEDURE_TIMEOUTS[procedure] → config.timeout"
+    );
+}
+
+// --- rpcFetch: response unwrapping ---
+
+#[test]
+fn fetch_helper_unwraps_vercel_response_envelope() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    assert!(
+        fetch_body.contains("json?.result?.data ?? json"),
+        "rpcFetch must unwrap Vercel's {{result: {{data}}}} envelope, falling back to raw json"
+    );
+}
+
+// --- rpcFetch: duration includes total time ---
+
+#[test]
+fn fetch_helper_duration_measures_total_time_including_retries() {
+    let manifest = common::make_manifest(vec![]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let fetch_start = output.find("async function rpcFetch").unwrap();
+    let fetch_body = &output[fetch_start..output.find("async function* rpcStream").unwrap_or(output.len())];
+    // start is captured before the retry loop — intentional: total operation time
+    let loop_pos = fetch_body.find("for (let attempt").unwrap();
+    let start_pos = fetch_body.find("const start = Date.now()").unwrap();
+    assert!(
+        start_pos < loop_pos,
+        "Date.now() must be captured before the retry loop (measures total operation time)"
+    );
+}
+
 // --- Stream timeout / PROCEDURE_TIMEOUTS tests ---
 
 #[test]
