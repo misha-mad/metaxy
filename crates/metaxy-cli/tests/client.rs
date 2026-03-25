@@ -1002,6 +1002,40 @@ fn stream_helper_does_not_apply_procedure_timeouts() {
     );
 }
 
+// --- Stream lifecycle hooks tests ---
+
+#[test]
+fn stream_helper_calls_on_request() {
+    let manifest = common::make_manifest(vec![common::make_stream(
+        "chat",
+        Some(RustType::simple("String")),
+        Some(RustType::simple("String")),
+    )]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let stream_start = output.find("async function* rpcStream").unwrap();
+    let stream_body = &output[stream_start..];
+    assert!(
+        stream_body.contains("config.onRequest"),
+        "rpcStream must fire onRequest hook before the fetch"
+    );
+}
+
+#[test]
+fn stream_helper_calls_on_error() {
+    let manifest = common::make_manifest(vec![common::make_stream(
+        "chat",
+        Some(RustType::simple("String")),
+        Some(RustType::simple("String")),
+    )]);
+    let output = generate_client_file(&manifest, "./rpc-types", false);
+    let stream_start = output.find("async function* rpcStream").unwrap();
+    let stream_body = &output[stream_start..];
+    assert!(
+        stream_body.contains("config.onError"),
+        "rpcStream must fire onError hook when stream fails"
+    );
+}
+
 // --- Stream method tests ---
 
 #[test]

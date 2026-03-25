@@ -233,44 +233,55 @@ const STREAM_HELPER: &str = r#"async function* rpcStream<T>(
     init.signal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
   }
 
-  const res = await fetchFn(url, init);
-  if (!res.ok) {
-    let data: unknown;
-    try { data = await res.json(); } catch { data = null; }
-    throw new RpcError(res.status, `RPC stream error on "${procedure}": ${res.status} ${res.statusText}`, data);
-  }
-
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+  await config.onRequest?.({ procedure, method: "POST", url, headers: { ...headers }, input });
 
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop()!;
-      for (const part of parts) {
-        let eventType = "message";
-        const dataLines: string[] = [];
-        for (const line of part.split("\n")) {
-          if (line.startsWith("event: ")) {
-            eventType = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            dataLines.push(line.slice(6));
+    const res = await fetchFn(url, init);
+    if (!res.ok) {
+      let data: unknown;
+      try { data = await res.json(); } catch { data = null; }
+      const err = new RpcError(res.status, `RPC stream error on "${procedure}": ${res.status} ${res.statusText}`, data);
+      await config.onError?.({ procedure, method: "POST", url, error: err, attempt: 1, willRetry: false });
+      throw err;
+    }
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop()!;
+        for (const part of parts) {
+          let eventType = "message";
+          const dataLines: string[] = [];
+          for (const line of part.split("\n")) {
+            if (line.startsWith("event: ")) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              dataLines.push(line.slice(6));
+            }
           }
-        }
-        for (const payload of dataLines) {
-          if (eventType === "error") {
-            throw new RpcError(500, `RPC stream error on "${procedure}": ${payload}`, null);
+          for (const payload of dataLines) {
+            if (eventType === "error") {
+              throw new RpcError(500, `RPC stream error on "${procedure}": ${payload}`, null);
+            }
+            yield (config.deserialize ? config.deserialize(payload) : JSON.parse(payload)) as T;
           }
-          yield (config.deserialize ? config.deserialize(payload) : JSON.parse(payload)) as T;
         }
       }
+    } finally {
+      reader.releaseLock();
     }
-  } finally {
-    reader.releaseLock();
+  } catch (err) {
+    if (!(err instanceof RpcError)) {
+      await config.onError?.({ procedure, method: "POST", url, error: err, attempt: 1, willRetry: false });
+    }
+    throw err;
   }
 }"#;
 
