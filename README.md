@@ -58,36 +58,6 @@ const greeting = await rpc.query("hello", "World");
 
 See the [Getting Started guide](https://metaxy-demo.vercel.app/docs/getting-started) for the full walkthrough.
 
-## Streaming
-
-Stream responses via SSE with `#[rpc_stream]`:
-
-```rust
-use metaxy::{rpc_stream, StreamSender};
-use serde::Serialize;
-
-#[derive(Serialize)]
-pub struct Token { pub text: String }
-
-#[rpc_stream(timeout = "60s")]
-async fn chat(prompt: String, tx: StreamSender<Token>) {
-    for word in prompt.split_whitespace() {
-        tx.send(Token { text: word.to_string() }).await.ok();
-    }
-}
-```
-
-```typescript
-// Async generator
-for await (const chunk of rpc.stream("chat", "Hello world")) {
-  console.log(chunk.text);
-}
-
-// Reactive wrapper (Svelte 5)
-const stream = createStream(rpc, "chat", () => prompt);
-// stream.chunks, stream.isStreaming, stream.start(), stream.stop()
-```
-
 ## Documentation
 
 Full documentation is available at **[metaxy-demo.vercel.app/docs](https://metaxy-demo.vercel.app/docs/getting-started)**.
