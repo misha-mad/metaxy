@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/misha-mad/metaxy/compare/metaxy-cli-v0.5.0...metaxy-cli-v0.5.1) - 2026-03-26
+
+### Fixed
+
+- *(metaxy-cli)* fire onRequest and onError lifecycle hooks in rpcStream
+- *(metaxy-cli)* apply callOptions.timeout to rpcStream connection
+- *(metaxy-cli)* merge callOptions.signal with internal AbortController in stream wrappers
+- *(metaxy-cli)* handle SSE event:error in rpcStream parser
+
+### Other
+
+- Merge pull request #101 from misha-mad/test/rpc-fetch-coverage
+- *(metaxy-cli)* add rpcFetch coverage for headers, retry, timeout, GET serialisation and response unwrapping
+- *(metaxy-cli,metaxy-macro)* add missing stream coverage for timeout+input, init+timeout, and JsDoc overloads
+
 ## [0.5.0](https://github.com/misha-mad/metaxy/compare/metaxy-cli-v0.4.1...metaxy-cli-v0.5.0) - 2026-03-21
 
 ### Added

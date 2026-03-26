@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11](https://github.com/misha-mad/metaxy/compare/metaxy-macro-v0.1.10...metaxy-macro-v0.1.11) - 2026-03-26
+
+### Other
+
+- *(metaxy-cli,metaxy-macro)* rustfmt formatting
+- *(metaxy-cli,metaxy-macro)* verify streaming option combinations and exclusions
+- *(metaxy-cli,metaxy-macro)* add missing stream coverage for timeout+input, init+timeout, and JsDoc overloads
+
 ## [0.1.10](https://github.com/misha-mad/metaxy/compare/metaxy-macro-v0.1.9...metaxy-macro-v0.1.10) - 2026-03-21
 
 ### Added
